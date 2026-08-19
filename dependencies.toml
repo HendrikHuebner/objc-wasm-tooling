@@ -1,0 +1,63 @@
+# Source repositories used by objc-wasm-tooling.
+#
+# Keep commits explicit.  The downloader uses these entries as the source of
+# truth and never follows a moving branch after the checkout is created.
+
+[[repository]]
+name = "llvm-project"
+url = "https://github.com/llvm/llvm-project.git"
+commit = "30eb0207b087170ed09e9f3307b84344f5b87318"
+branch = "main"
+
+[[repository]]
+name = "emsdk"
+url = "https://github.com/emscripten-core/emsdk.git"
+commit = "9d85bde7124811eaab935e657a65d536b1d937bb"
+branch = "main"
+
+[[repository]]
+name = "emscripten"
+url = "https://github.com/emscripten-core/emscripten.git"
+commit = "ce75e06884093bcefb86a6b8fd56a5d62a4cc245"
+branch = "main"
+
+[[repository]]
+name = "libobjc2"
+url = "https://github.com/gnustep/libobjc2.git"
+commit = "6f4b7ba7718ede982a875924dabac951f52d3fc3"
+
+[[repository]]
+name = "libs-make"
+url = "https://github.com/gnustep/tools-make.git"
+commit = "ee68a4740c2e3679fc923a7b27d90088ce3708e6"
+
+[[repository]]
+name = "libs-base"
+url = "https://github.com/gnustep/libs-base.git"
+commit = "64237235480534f1300a6a195998c41c5d4f6b8f"
+
+[[repository]]
+name = "libs-corebase"
+url = "https://github.com/gnustep/libs-corebase.git"
+commit = "ea62e0b43725f17f72d3e060553cf97fe674123a"
+
+[[repository]]
+name = "zlib"
+url = "https://github.com/madler/zlib.git"
+commit = "216c70c020aa53f0c40920d155f808b6b59c9acb"
+
+[[repository]]
+name = "libffi"
+url = "https://github.com/libffi/libffi.git"
+commit = "1716f81e9a115d340429504563bc8e7fb2eeef2b"
+
+[[repository]]
+name = "icu"
+url = "https://github.com/unicode-org/icu.git"
+commit = "21d1eb0f306e1141c10931e914dfc038c06121da"
+
+[[repository]]
+name = "qtbase"
+url = "https://code.qt.io/qt/qtbase.git"
+commit = "c07c2d5a527a644d36e7853d55132ae38921682f"
+branch = "v6.8.3"
