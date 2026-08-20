@@ -8,7 +8,7 @@ This repo contains a patch-based "build system" to run some basic integration te
 
 I'm working on upstreaming some of these patches.
 
-## Prerequisits
+## Prerequisites
 
 ```
   python
