@@ -47,18 +47,27 @@ def load_repositories(path: Path) -> list[Repository]:
     return result
 
 
-def run(command: list[str], *, cwd: Path | None = None) -> str:
+def run(
+    command: list[str], *, cwd: Path | None = None, quiet: bool = False
+) -> str:
     print("+", " ".join(command))
-    completed = subprocess.run(
-        command,
-        cwd=cwd,
-        check=True,
-        text=True,
-        capture_output=True,
-    )
-    if completed.stdout:
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=cwd,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+    except subprocess.CalledProcessError as error:
+        if error.stdout:
+            print(error.stdout, end="")
+        if error.stderr:
+            print(error.stderr, end="", file=sys.stderr)
+        raise
+    if completed.stdout and not quiet:
         print(completed.stdout, end="")
-    if completed.stderr:
+    if completed.stderr and not quiet:
         print(completed.stderr, end="", file=sys.stderr)
     return completed.stdout.strip()
 
@@ -68,7 +77,7 @@ def checkout(repository: Repository, destination: Path) -> None:
 
     if not destination.exists():
         clone = [
-            "git", "clone", "--filter=blob:none", "--no-checkout",
+            "git", "clone", "--filter=blob:none",
         ]
         if repository.branch:
             clone.extend(["--branch", repository.branch])
@@ -79,12 +88,27 @@ def checkout(repository: Repository, destination: Path) -> None:
             f"{destination} exists but is not a Git checkout; refusing to remove it"
         )
 
-    current = run(["git", "rev-parse", "HEAD"], cwd=destination)
-    dirty = bool(run(["git", "status", "--porcelain"], cwd=destination))
+    current = run(["git", "rev-parse", "HEAD"], cwd=destination, quiet=True)
+    dirty = bool(run(["git", "status", "--porcelain"], cwd=destination, quiet=True))
+    # `git clone --no-checkout` leaves an empty index and reports every file
+    # as a staged deletion. This is an interrupted/incomplete checkout, not a
+    # user edit, so it is safe to populate it with the requested revision.
+    tracked = run(["git", "ls-files"], cwd=destination, quiet=True)
+    untracked = run(
+        ["git", "ls-files", "--others", "--exclude-standard"],
+        cwd=destination,
+        quiet=True,
+    )
+    remaining = [path for path in destination.iterdir() if path.name != ".git"]
+    empty_partial_clone = not tracked and not untracked and not remaining
     if current == repository.commit:
-        print(f"    {repository.name}: already at {repository.commit}")
+        if empty_partial_clone:
+            run(["git", "checkout", "--detach", repository.commit], cwd=destination)
+            print(f"    {repository.name}: completed the pinned checkout {repository.commit}")
+        else:
+            print(f"    {repository.name}: already at {repository.commit}")
         return
-    if dirty:
+    if dirty and not empty_partial_clone:
         raise RuntimeError(
             f"{destination} is dirty at {current}; refusing to replace it with "
             f"{repository.commit}"
@@ -101,12 +125,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Lazily clone and pin objc-wasm-tooling dependencies"
     )
+    parser.add_argument("manifest", type=Path, help="dependency manifest")
     parser.add_argument(
-        "--manifest", type=Path, default=ROOT / "dependencies.toml",
-        help="dependency manifest (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--dest", type=Path, default=ROOT / "deps",
+        "--dir", type=Path, default=ROOT / "deps",
         help="checkout directory (default: %(default)s)",
     )
     parser.add_argument(
@@ -137,7 +158,7 @@ def main(argv: list[str] | None = None) -> int:
     for name in names:
         repository = by_name[name]
         print(f"==> {repository.name}")
-        checkout(repository, args.dest.expanduser().resolve() / repository.name)
+        checkout(repository, args.dir.expanduser().resolve() / repository.name)
     return 0
 
 

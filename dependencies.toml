@@ -1,6 +1,6 @@
 # Source repositories used by objc-wasm-tooling.
 #
-# Keep commits explicit.  The downloader uses these entries as the source of
+# Keep commits explicit. The downloader uses these entries as the source of
 # truth and never follows a moving branch after the checkout is created.
 
 [[repository]]
@@ -22,14 +22,15 @@ commit = "ce75e06884093bcefb86a6b8fd56a5d62a4cc245"
 branch = "main"
 
 [[repository]]
+name = "binaryen"
+url = "https://github.com/WebAssembly/binaryen.git"
+commit = "1f903c14babf829745b421b92ff0f286e93e4209"
+branch = "version_131"
+
+[[repository]]
 name = "libobjc2"
 url = "https://github.com/gnustep/libobjc2.git"
 commit = "6f4b7ba7718ede982a875924dabac951f52d3fc3"
-
-[[repository]]
-name = "libs-make"
-url = "https://github.com/gnustep/tools-make.git"
-commit = "ee68a4740c2e3679fc923a7b27d90088ce3708e6"
 
 [[repository]]
 name = "libs-base"
