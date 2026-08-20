@@ -1,0 +1,7 @@
+diff --git a/configure b/configure
+--- a/configure
++++ b/configure
+@@ -5307,1 +5307,1 @@
+-if test x"with_icu" != xno; then :
++if test "x$with_icu" != xno; then :
+

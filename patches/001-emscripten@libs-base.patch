@@ -1,0 +1,173 @@
+diff --git a/Headers/Foundation/NSBackgroundActivityScheduler.h b/Headers/Foundation/NSBackgroundActivityScheduler.h
+index f7b8d6ab0..d8d917af8 100644
+--- a/Headers/Foundation/NSBackgroundActivityScheduler.h
++++ b/Headers/Foundation/NSBackgroundActivityScheduler.h
+@@ -77,7 +77,8 @@ GS_EXPORT_CLASS
+   NSActivityOptions _opts;
+   id _token;
+   NSString *_reason;
+-  BLOCK_SCOPE GSScheduledBlock _block;
++  /* __block is only valid on local variables, not Objective-C ivars. */
++  GSScheduledBlock _block;
+ }
+   
+ - (instancetype) initWithIdentifier: (NSString *)identifier;
+@@ -113,4 +114,3 @@ GS_EXPORT_CLASS
+ #endif	/* GS_API_MACOSX */
+ 
+ #endif	/* _NSBackgroundActivityScheduler_h_GNUSTEP_BASE_INCLUDE */
+-
+diff --git a/Source/Additions/GSObjCRuntime.m b/Source/Additions/GSObjCRuntime.m
+index 395b63d37..881db2f5c 100644
+--- a/Source/Additions/GSObjCRuntime.m
++++ b/Source/Additions/GSObjCRuntime.m
+@@ -1982,7 +1982,7 @@ @implementation	GSAutoreleasedMemory
+   static Class	buffer_class = 0;
+   static Class	autorelease_class;
+   static SEL	autorelease_sel;
+-  static id	(*autorelease_imp)(Class, SEL, id);
++  static void	(*autorelease_imp)(Class, SEL, id);
+   static int	instance_size;
+   static int	offset;
+   NSObject	*o;
+@@ -1994,7 +1994,7 @@ @implementation	GSAutoreleasedMemory
+       offset = instance_size % ALIGN;
+       autorelease_class = [NSAutoreleasePool class];
+       autorelease_sel = @selector(addObject:);
+-      autorelease_imp = (id (*)(Class, SEL, id))
++      autorelease_imp = (void (*)(Class, SEL, id))
+         [autorelease_class methodForSelector: autorelease_sel];
+     }
+   o = (NSObject*)NSAllocateObject(buffer_class,
+@@ -2333,4 +2333,3 @@ @implementation	GSAutoreleasedMemory
+       fprintf(fptr, "}\n");
+     }
+ }
+-
+diff --git a/Source/NSAutoreleasePool.m b/Source/NSAutoreleasePool.m
+index 0e40b8929..a4f31c675 100644
+--- a/Source/NSAutoreleasePool.m
++++ b/Source/NSAutoreleasePool.m
+@@ -440,8 +440,14 @@ + (id) new
+       initImp
+ 	= [NSAutoreleasePool instanceMethodForSelector: @selector(init)];
+     }
++#ifdef __wasm__
++  arp = ((id (*)(id, SEL, NSZone *))allocImp)
++    (self, @selector(allocWithZone:), NSDefaultMallocZone());
++  return ((id (*)(id, SEL))initImp)(arp, @selector(init));
++#else
+   arp = (*allocImp)(self, @selector(allocWithZone:), NSDefaultMallocZone());
+   return (*initImp)(arp, @selector(init));
++#endif
+ }
+ 
+ #ifdef ARC_RUNTIME
+@@ -735,4 +741,3 @@ + (void) setPoolNumberThreshold: (unsigned)c
+ }
+ 
+ @end
+-
+diff --git a/Source/NSDictionary.m b/Source/NSDictionary.m
+index 1f4bf83d3..68d5a7cbe 100644
+--- a/Source/NSDictionary.m
++++ b/Source/NSDictionary.m
+@@ -831,7 +831,7 @@ - (NSArray*) allKeys
+ 
+       for (i = 0; i < c; i++)
+ 	{
+-	  k[i] = (*nxtObj)(e, nxtSel);
++	  k[i] = ((id (*)(id, SEL))nxtObj)(e, nxtSel);
+ 	  NSAssert (k[i], NSInternalInconsistencyException);
+ 	}
+       result = [[NSArray_class allocWithZone: NSDefaultMallocZone()]
+@@ -862,7 +862,7 @@ - (NSArray*) allValues
+ 
+       for (i = 0; i < c; i++)
+ 	{
+-	  k[i] = (*nxtObj)(e, nxtSel);
++	  k[i] = ((id (*)(id, SEL))nxtObj)(e, nxtSel);
+ 	}
+       result = [[NSArray_class allocWithZone: NSDefaultMallocZone()]
+ 	initWithObjects: k count: c];
+diff --git a/Source/NSObject.m b/Source/NSObject.m
+index dfe54d597..3767374fc 100644
+--- a/Source/NSObject.m
++++ b/Source/NSObject.m
+@@ -140,6 +140,10 @@ void objc_enumerationMutation(id obj)
+ 
+ static SEL finalize_sel;
+ static IMP finalize_imp;
++
++#ifdef __wasm__
++typedef void (*GSVoidMethodIMP)(id, SEL);
++#endif
+ static Class	NSConstantStringClass;
+ 
+ @class	NSDataMalloc;
+@@ -800,7 +804,11 @@ static id retain_fast(id anObject)
+       constructor = class_getMethodImplementation(aClass, cxx_construct);
+       if (calledConstructor != constructor)
+         {
++#ifdef __wasm__
++          ((GSVoidMethodIMP)constructor)(anObject, cxx_construct);
++#else
+           constructor(anObject, cxx_construct);
++#endif
+         }
+     }
+   return constructor;
+@@ -869,7 +877,11 @@ static id retain_fast(id anObject)
+ 
+       /* Call the default finalizer to handle C++ destructors.
+        */
++#ifdef __wasm__
++      ((GSVoidMethodIMP)finalize_imp)(anObject, finalize_sel);
++#else
+       (*finalize_imp)(anObject, finalize_sel);
++#endif
+ 
+ #ifndef OBJC_CAP_ARC
+       if (GSPrivateMarkedAssociations(anObject, NO))
+@@ -1894,7 +1906,12 @@ - (id) autorelease
+ 	  release_count, retain_count];
+     }
+ 
++#ifdef __wasm__
++  ((void (*)(id, SEL, id))autorelease_imp)
++    (autorelease_class, autorelease_sel, self);
++#else
+   (*autorelease_imp)(autorelease_class, autorelease_sel, self);
++#endif
+   return self;
+ }
+ 
+diff --git a/Source/NSTask.m b/Source/NSTask.m
+index cfec77794..e6024de99 100644
+--- a/Source/NSTask.m
++++ b/Source/NSTask.m
+@@ -210,7 +210,7 @@ @interface NSConcreteUnixTask : NSTask
+ 
+   slave = open(name, O_RDWR);
+ #ifdef	HAVE_SYS_STROPTS_H
+-#ifdef	HAVE_PTS_STREAM_MODULES
++#if	HAVE_PTS_STREAM_MODULES
+   if (slave >= 0 && isastream(slave))
+     {
+       if (ioctl(slave, I_PUSH, "ptem") < 0)
+diff --git a/Source/NSThread.m b/Source/NSThread.m
+index 72f58c9c9..854391e1c 100644
+--- a/Source/NSThread.m
++++ b/Source/NSThread.m
+@@ -1049,6 +1049,10 @@ + (BOOL) setThreadPriority: (double)pri
+     return NO;
+   }
+   return YES;
++#elif defined(__EMSCRIPTEN__)
++  /* Emscripten advertises POSIX priority scheduling but does not implement
++   * the scheduler entry points. */
++  return NO;
+ #elif defined(_POSIX_THREAD_PRIORITY_SCHEDULING) && (_POSIX_THREAD_PRIORITY_SCHEDULING > 0)
+   int res;
+   int	policy;
+

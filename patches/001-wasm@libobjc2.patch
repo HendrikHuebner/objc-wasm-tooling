@@ -1,0 +1,566 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index d140a68..04c2cc0 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -50,6 +50,24 @@ message(STATUS "Architecture as detected by CMake: ${CMAKE_SYSTEM_PROCESSOR}")
+ # Build configuration
+ add_compile_definitions(GNUSTEP __OBJC_RUNTIME_INTERNAL__=1 __OBJC_BOOL)
+ 
++set(LIBOBJC_WASM_DEFAULT OFF)
++if (CMAKE_SYSTEM_PROCESSOR MATCHES "^wasm")
++	set(LIBOBJC_WASM_DEFAULT ON)
++endif ()
++option(LIBOBJC_WASM "Build WebAssembly-specific runtime support" ${LIBOBJC_WASM_DEFAULT})
++
++set(BUILD_SHARED_LIBOBJC_DEFAULT ON)
++set(BUILD_STATIC_LIBOBJC_DEFAULT OFF)
++if (LIBOBJC_WASM)
++	set(BUILD_SHARED_LIBOBJC_DEFAULT OFF)
++	set(BUILD_STATIC_LIBOBJC_DEFAULT ON)
++endif ()
++option(BUILD_SHARED_LIBOBJC "Build the shared version of libobjc" ${BUILD_SHARED_LIBOBJC_DEFAULT})
++option(BUILD_STATIC_LIBOBJC "Build the static version of libobjc" ${BUILD_STATIC_LIBOBJC_DEFAULT})
++
++if (NOT BUILD_SHARED_LIBOBJC AND NOT BUILD_STATIC_LIBOBJC)
++	message(FATAL_ERROR "At least one of BUILD_SHARED_LIBOBJC and BUILD_STATIC_LIBOBJC must be enabled.")
++endif ()
+ 
+ 
+ set(libobjc_ASM_SRCS 
+@@ -143,6 +161,7 @@ option(DEBUG_ARC_COMPAT
+ option(ENABLE_OBJCXX "Enable support for Objective-C++" ON)
+ option(TESTS "Enable building the tests")
+ option(EMBEDDED_BLOCKS_RUNTIME "Include an embedded blocks runtime, rather than relying on libBlocksRuntime to supply it" ON)
++option(ENABLE_BLOCK_TO_IMP "Enable block-to-IMP trampolines" ON)
+ option(STRICT_APPLE_COMPATIBILITY "Use strict Apple compatibility, always defining BOOL as signed char" OFF)
+ 
+ # For release builds, we disable spamming the terminal with warnings about
+@@ -156,11 +175,22 @@ add_compile_definitions($<$<BOOL:${STRICT_APPLE_COMPATIBILITY}>:STRICT_APPLE_COM
+ configure_file(objc/objc-config.h.in objc/objc-config.h @ONLY)
+ include_directories("${PROJECT_BINARY_DIR}/objc/")
+ 
+-if (EMBEDDED_BLOCKS_RUNTIME)
++if (EMBEDDED_BLOCKS_RUNTIME AND ENABLE_BLOCK_TO_IMP)
+ 	list(APPEND libobjc_ASM_SRCS block_trampolines.S)
+ 	list(APPEND libobjc_C_SRCS block_to_imp.c)
+ endif()
+ 
++if (LIBOBJC_WASM)
++	# WebAssembly has no native dispatch or writable-code trampoline assembly.
++	# Lookup dispatch remains available through sendmsg2.c.
++	set(libobjc_ASM_SRCS)
++	list(REMOVE_ITEM libobjc_C_SRCS fast_paths.m block_to_imp.c)
++	list(REMOVE_ITEM libobjc_C_SRCS eh_personality.c)
++	list(APPEND libobjc_C_SRCS block_to_imp_unsupported.c)
++	list(APPEND libobjc_CXX_SRCS objc_wasm_eh.cc)
++	set(ENABLE_BLOCK_TO_IMP OFF CACHE BOOL "Enable block-to-IMP trampolines" FORCE)
++endif ()
++
+ if (OLDABI_COMPAT)
+ 	list(APPEND libobjc_C_SRCS legacy.c abi_version.c statics_loader.c)
+ 	add_definitions(-DOLDABI_COMPAT=1)
+@@ -188,7 +218,7 @@ if (CMAKE_SYSTEM_PROCESSOR STREQUAL "ppc" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "pp
+ 	add_definitions(-DNO_SAFE_CACHING)
+ endif()
+ 
+-set(INSTALL_TARGETS objc)
++set(INSTALL_TARGETS)
+ 
+ if(WIN32)
+ 	if(CMAKE_ASM_COMPILER_TARGET)
+@@ -227,6 +257,8 @@ if (WIN32 AND NOT MINGW)
+ elseif (MINGW)
+ 	message(STATUS "Using MinGW-compatible exception model")
+ 	list(APPEND libobjc_CXX_SRCS objcxx_eh.cc objcxx_eh_mingw.cc)
++elseif (LIBOBJC_WASM)
++	message(STATUS "Using WebAssembly C++ exception model")
+ else ()
+ 	set(EH_PERSONALITY_FLAGS "")
+ 	if (CMAKE_CXX_COMPILER_TARGET)
+@@ -257,19 +289,8 @@ else ()
+ 	endif ()
+ endif ()
+ 
+-add_library(objc SHARED ${libobjc_C_SRCS} ${libobjc_ASM_SRCS} ${libobjc_OBJC_SRCS} ${libobjc_OBJCXX_SRCS} ${libobjc_ASM_OBJS})
+-target_compile_options(objc PRIVATE "$<$<OR:$<COMPILE_LANGUAGE:OBJC>,$<COMPILE_LANGUAGE:OBJCXX>>:-Wno-gnu-folding-constant;-Wno-deprecated-objc-isa-usage;-Wno-objc-root-class;-fobjc-runtime=gnustep-2.0>$<$<COMPILE_LANGUAGE:C>:-Xclang;-fexceptions;-Wno-gnu-folding-constant>")
+-target_compile_features(objc PRIVATE cxx_std_20)
+-
+ list(APPEND libobjc_CXX_SRCS ${libobjcxx_CXX_SRCS})
+-target_sources(objc PRIVATE ${libobjc_CXX_SRCS})
+-
+ include(FindThreads)
+-target_link_libraries(objc PUBLIC Threads::Threads)
+-# Link against ntdll.dll for RtlRaiseException
+-if (WIN32 AND NOT MINGW)
+-	target_link_libraries(objc PUBLIC ntdll.dll)
+-endif()
+ 
+ if (NOT EMBEDDED_BLOCKS_RUNTIME)
+ 	# Check if the blocks runtime exports _Block_use_RR2 
+@@ -283,27 +304,60 @@ if (NOT EMBEDDED_BLOCKS_RUNTIME)
+ 		message(FATAL_ERROR "The external blocks runtime is not supported. It does not export _Block_use_RR2().")
+ 	endif()
+ 
+-	target_compile_definitions(objc PRIVATE HAVE_BLOCK_USE_RR2)
+-	target_link_libraries(objc PUBLIC BlocksRuntime::BlocksRuntime)
+ endif()
+ 
+-target_link_libraries(objc PRIVATE tsl::robin_map)
+ 
+-set_target_properties(objc PROPERTIES
+-	LINKER_LANGUAGE C
+-	SOVERSION ${libobjc_VERSION}
+-	OUTPUT_NAME ${LIBOBJC_NAME}
+-	LINK_FLAGS "${objc_LINK_FLAGS}"
+-	)
+-
+-set_property(TARGET PROPERTY NO_SONAME true)
++if (BUILD_SHARED_LIBOBJC)
++	add_library(objc SHARED ${libobjc_C_SRCS} ${libobjc_ASM_SRCS} ${libobjc_OBJC_SRCS} ${libobjc_OBJCXX_SRCS} ${libobjc_ASM_OBJS})
++	target_compile_options(objc PRIVATE "$<$<OR:$<COMPILE_LANGUAGE:OBJC>,$<COMPILE_LANGUAGE:OBJCXX>>:-Wno-gnu-folding-constant;-Wno-deprecated-objc-isa-usage;-Wno-objc-root-class;-fobjc-runtime=gnustep-2.0>$<$<COMPILE_LANGUAGE:C>:-Xclang;-fexceptions;-Wno-gnu-folding-constant>")
++	target_compile_features(objc PRIVATE cxx_std_20)
++	target_sources(objc PRIVATE ${libobjc_CXX_SRCS})
++	target_link_libraries(objc PUBLIC Threads::Threads)
++	# Link against ntdll.dll for RtlRaiseException
++	if (WIN32 AND NOT MINGW)
++		target_link_libraries(objc PUBLIC ntdll.dll)
++	endif()
++	if (NOT EMBEDDED_BLOCKS_RUNTIME)
++		target_compile_definitions(objc PRIVATE HAVE_BLOCK_USE_RR2)
++		target_link_libraries(objc PUBLIC BlocksRuntime::BlocksRuntime)
++	endif()
++	if (LIBOBJC_WASM)
++		get_target_property(ROBIN_MAP_INCLUDE_DIRS tsl::robin_map INTERFACE_INCLUDE_DIRECTORIES)
++		target_include_directories(objc PRIVATE ${ROBIN_MAP_INCLUDE_DIRS})
++	else ()
++		target_link_libraries(objc PRIVATE tsl::robin_map)
++	endif ()
++	set_target_properties(objc PROPERTIES
++		LINKER_LANGUAGE C
++		SOVERSION ${libobjc_VERSION}
++		OUTPUT_NAME ${LIBOBJC_NAME}
++		LINK_FLAGS "${objc_LINK_FLAGS}"
++		)
++	if (NOT LIBOBJC_WASM)
++		set_property(TARGET objc PROPERTY NO_SONAME true)
++	endif ()
++	list(APPEND INSTALL_TARGETS objc)
++endif ()
+ 
+-option(BUILD_STATIC_LIBOBJC "Build the static version of libobjc" OFF)
+ if (BUILD_STATIC_LIBOBJC)
+ 	add_library(objc-static STATIC ${libobjc_C_SRCS} ${libobjc_ASM_SRCS} ${libobjc_OBJC_SRCS} ${libobjc_OBJCXX_SRCS} ${libobjc_CXX_SRCS})
+ 	target_compile_options(objc-static PRIVATE "$<$<OR:$<COMPILE_LANGUAGE:OBJC>,$<COMPILE_LANGUAGE:OBJCXX>>:-Wno-gnu-folding-constant;-Wno-deprecated-objc-isa-usage;-Wno-objc-root-class;-fobjc-runtime=gnustep-2.0>$<$<COMPILE_LANGUAGE:C>:-Xclang;-fexceptions;-Wno-gnu-folding-constant>")
+ 	target_compile_features(objc-static PRIVATE cxx_std_20)
+-	target_link_libraries(objc-static PRIVATE tsl::robin_map)
++	if (NOT EMBEDDED_BLOCKS_RUNTIME)
++		target_compile_definitions(objc-static PRIVATE HAVE_BLOCK_USE_RR2)
++		target_link_libraries(objc-static PUBLIC BlocksRuntime::BlocksRuntime)
++	endif ()
++	if (LIBOBJC_WASM)
++		get_target_property(ROBIN_MAP_INCLUDE_DIRS tsl::robin_map INTERFACE_INCLUDE_DIRECTORIES)
++		target_include_directories(objc-static PRIVATE ${ROBIN_MAP_INCLUDE_DIRS})
++	else ()
++		target_link_libraries(objc-static PRIVATE tsl::robin_map)
++	endif ()
++	target_include_directories(
++		objc-static
++		INTERFACE
++		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
++		$<INSTALL_INTERFACE:include>)
+ 	set_target_properties(objc-static PROPERTIES
+ 		POSITION_INDEPENDENT_CODE true
+ 		OUTPUT_NAME ${LIBOBJC_NAME})
+@@ -312,7 +366,9 @@ endif ()
+ 
+ # Explicitly link libm, as an implicit dependency of the C++ runtime
+ if (M_LIBRARY)
+-	target_link_libraries(objc PUBLIC ${M_LIBRARY})
++	if (BUILD_SHARED_LIBOBJC)
++		target_link_libraries(objc PUBLIC ${M_LIBRARY})
++	endif ()
+ endif ()
+ 
+ # Make weak symbols work on OS X
+@@ -382,11 +438,13 @@ else ()
+ endif ()
+ message(STATUS "GNUstep install type set to ${GNUSTEP_INSTALL_TYPE}")
+ 
+-target_include_directories(
+-	objc
+-	INTERFACE
+-	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+-	$<INSTALL_INTERFACE:include>)
++if (BUILD_SHARED_LIBOBJC)
++	target_include_directories(
++		objc
++		INTERFACE
++		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
++		$<INSTALL_INTERFACE:include>)
++endif ()
+ install(TARGETS ${INSTALL_TARGETS}
+ 	EXPORT libobjcTargets
+ 	RUNTIME DESTINATION ${BIN_INSTALL_PATH}
+diff --git a/arc.mm b/arc.mm
+index 459a3fb..ae9e734 100644
+--- a/arc.mm
++++ b/arc.mm
+@@ -603,7 +603,8 @@ static inline id autorelease(id obj)
+ 		initAutorelease();
+ 		if (0 != AutoreleaseAdd)
+ 		{
+-			AutoreleaseAdd(AutoreleasePool, SELECTOR(addObject:), obj);
++			reinterpret_cast<void (*)(id, SEL, id)>(AutoreleaseAdd)(
++				AutoreleasePool, SELECTOR(addObject:), obj);
+ 		}
+ 		return obj;
+ 	}
+@@ -676,7 +677,8 @@ static inline id autorelease(id obj)
+ 	}
+ 	initAutorelease();
+ 	if (0 == NewAutoreleasePool) { return NULL; }
+-	return NewAutoreleasePool(AutoreleasePool, SELECTOR(new));
++	return reinterpret_cast<id (*)(id, SEL)>(NewAutoreleasePool)(
++		AutoreleasePool, SELECTOR(new));
+ }
+ extern "C" OBJC_PUBLIC void objc_autoreleasePoolPop(void *pool)
+ {
+@@ -692,7 +694,8 @@ static inline id autorelease(id obj)
+ 			return;
+ 		}
+ 	}
+-	DeleteAutoreleasePool(static_cast<id>(pool), SELECTOR(release));
++	reinterpret_cast<void (*)(id, SEL)>(DeleteAutoreleasePool)(
++		static_cast<id>(pool), SELECTOR(release));
+ 	struct arc_tls* tls = getARCThreadData();
+ 	if (tls && tls->returnRetained)
+ 	{
+@@ -786,13 +789,12 @@ static inline id autorelease(id obj)
+ 	release(obj);
+ }
+ 
+-extern "C" OBJC_PUBLIC id objc_storeStrong(id *addr, id value)
++extern "C" OBJC_PUBLIC void objc_storeStrong(id *addr, id value)
+ {
+ 	value = objc_retain(value);
+ 	id oldValue = *addr;
+ 	*addr = value;
+ 	objc_release(oldValue);
+-	return value;
+ }
+ 
+ ////////////////////////////////////////////////////////////////////////////////
+diff --git a/block_to_imp_unsupported.c b/block_to_imp_unsupported.c
+new file mode 100644
+index 0000000..ab927bc
+--- /dev/null
++++ b/block_to_imp_unsupported.c
+@@ -0,0 +1,31 @@
++#include <stddef.h>
++#include "objc/runtime.h"
++#include "visibility.h"
++
++PRIVATE void init_trampolines(void)
++{
++}
++
++IMP imp_implementationWithBlock(id block)
++{
++	(void)block;
++	return NULL;
++}
++
++char *block_copyIMPTypeEncoding_np(id block)
++{
++	(void)block;
++	return NULL;
++}
++
++id imp_getBlock(IMP anImp)
++{
++	(void)anImp;
++	return nil;
++}
++
++BOOL imp_removeBlock(IMP anImp)
++{
++	(void)anImp;
++	return NO;
++}
+diff --git a/dtable.c b/dtable.c
+index 54c0d72..2c66718 100644
+--- a/dtable.c
++++ b/dtable.c
+@@ -851,6 +851,12 @@ OBJC_PUBLIC void objc_send_initialize(id object)
+ 	// Store the buffer in the temporary dtables list.  Note that it is safe to
+ 	// insert it into a global list, even though it's a temporary variable,
+ 	// because we will clean it up after this function.
++	/* +initialize has a fixed void(id, SEL) signature.  Calling it through
++	 * generic IMP is tolerated by native ABIs, but traps on WebAssembly's
++	 * exactly typed call_indirect. */
++#ifdef __wasm__
++	((void (*)(id, SEL))initializeSlot->imp)((id)class, initializeSel);
++#else
+ 	initializeSlot->imp((id)class, initializeSel);
++#endif
+ }
+-
+diff --git a/objc/objc-arc.h b/objc/objc-arc.h
+index 03b10be..a262979 100644
+--- a/objc/objc-arc.h
++++ b/objc/objc-arc.h
+@@ -67,7 +67,7 @@ OBJC_PUBLIC id objc_retainBlock(id b);
+  * Stores value in addr.  This first retains value, then releases the old value
+  * at addr, and stores the retained value in the address.
+  */
+-OBJC_PUBLIC id objc_storeStrong(id *addr, id value);
++OBJC_PUBLIC void objc_storeStrong(id *addr, id value);
+ /**
+  * Stores obj in zeroing weak pointer addr.  If obj has begun deallocation,
+  * then this stores nil.
+@@ -150,4 +150,3 @@ OBJC_PUBLIC unsigned long objc_arc_autorelease_count_for_object_np(id);
+ #endif
+ 
+ #endif // __OBJC_ARC_INCLUDED__
+-
+diff --git a/objc_wasm_eh.cc b/objc_wasm_eh.cc
+new file mode 100644
+index 0000000..f5a34b8
+--- /dev/null
++++ b/objc_wasm_eh.cc
+@@ -0,0 +1,129 @@
++#include <cxxabi.h>
++#include <typeinfo>
++#include "objc/runtime.h"
++#include "objc/objc-arc.h"
++#include "visibility.h"
++
++// libc++abi's exception matcher calls this internal virtual interface.  It is
++// intentionally reproduced here because private_typeinfo.h is not installed.
++namespace __cxxabiv1
++{
++class __shim_type_info : public std::type_info
++{
++	protected:
++	explicit __shim_type_info(const char *name) : type_info(name) {}
++
++	public:
++	virtual ~__shim_type_info();
++	virtual void noop1() const;
++	virtual void noop2() const;
++	virtual bool can_catch(const __shim_type_info *thrownType,
++		void *&adjustedPtr) const = 0;
++};
++}
++
++namespace
++{
++static BOOL isKindOfClass(Class thrown, Class type)
++{
++	do
++	{
++		if (thrown == type)
++		{
++			return YES;
++		}
++		thrown = class_getSuperclass(thrown);
++	} while (Nil != thrown);
++	return NO;
++}
++
++static id thrownObject(void *pointer)
++{
++	return *static_cast<id *>(pointer);
++}
++
++static void *releaseThrownObject(void *pointer)
++{
++	objc_release(thrownObject(pointer));
++	return pointer;
++}
++}
++
++namespace gnustep::libobjc
++{
++struct OBJC_PUBLIC __objc_type_info : __cxxabiv1::__shim_type_info
++{
++	explicit __objc_type_info(const char *name) : __shim_type_info(name) {}
++};
++
++struct OBJC_PUBLIC __objc_id_type_info : __objc_type_info
++{
++	__objc_id_type_info() : __objc_type_info("@id") {}
++	bool can_catch(const __cxxabiv1::__shim_type_info *thrownType,
++		void *&adjustedPtr) const override;
++};
++
++struct OBJC_PUBLIC __objc_class_type_info : __objc_type_info
++{
++	using __objc_type_info::__objc_type_info;
++	bool can_catch(const __cxxabiv1::__shim_type_info *thrownType,
++		void *&adjustedPtr) const override;
++};
++
++bool __objc_id_type_info::can_catch(
++	const __cxxabiv1::__shim_type_info *thrownType, void *&adjustedPtr) const
++{
++	if (dynamic_cast<const __objc_type_info *>(thrownType) == nullptr)
++	{
++		return false;
++	}
++	adjustedPtr = thrownObject(adjustedPtr);
++	return true;
++}
++
++bool __objc_class_type_info::can_catch(
++	const __cxxabiv1::__shim_type_info *thrownType, void *&adjustedPtr) const
++{
++	if (dynamic_cast<const __objc_type_info *>(thrownType) == nullptr)
++	{
++		return false;
++	}
++	id thrown = thrownObject(adjustedPtr);
++	Class caughtClass = (Class)objc_getClass(name());
++	if (nil == thrown || Nil == caughtClass ||
++		!isKindOfClass(object_getClass(thrown), caughtClass))
++	{
++		return false;
++	}
++	adjustedPtr = thrown;
++	return true;
++}
++}
++
++extern "C"
++{
++OBJC_PUBLIC gnustep::libobjc::__objc_id_type_info __objc_id_type_info;
++
++static bool AppleCompatibleMode = true;
++OBJC_PUBLIC int objc_set_apple_compatible_objcxx_exceptions(int newValue)
++{
++	bool oldValue = AppleCompatibleMode;
++	AppleCompatibleMode = newValue;
++	return oldValue;
++}
++
++OBJC_PUBLIC __attribute__((noreturn)) void objc_exception_throw(id object)
++{
++	objc_retain(object);
++	id *exception = static_cast<id *>(
++		__cxxabiv1::__cxa_allocate_exception(sizeof(id)));
++	*exception = object;
++	__cxxabiv1::__cxa_throw(exception, &__objc_id_type_info,
++		releaseThrownObject);
++}
++
++OBJC_PUBLIC __attribute__((noreturn)) void objc_exception_rethrow(void)
++{
++	__cxxabiv1::__cxa_rethrow();
++}
++}
+diff --git a/pool.hh b/pool.hh
+index 4a2af59..412a066 100644
+--- a/pool.hh
++++ b/pool.hh
+@@ -42,4 +42,3 @@ class PoolAllocate
+ 	}
+ };
+ 
+-
+diff --git a/runtime.c b/runtime.c
+index 45b290e..beb3eae 100644
+--- a/runtime.c
++++ b/runtime.c
+@@ -46,7 +46,7 @@ PRIVATE void call_cxx_destruct(id obj)
+ 		cls = cls->super_class;
+ 		if (currentClass->cxx_destruct)
+ 		{
+-			currentClass->cxx_destruct(obj, cxx_destruct);
++			((void (*)(id, SEL))currentClass->cxx_destruct)(obj, cxx_destruct);
+ 		}
+ 	}
+ }
+@@ -65,7 +65,7 @@ static void call_cxx_construct_for_class(Class cls, id obj)
+ 	}
+ 	if (cls->cxx_construct)
+ 	{
+-		cls->cxx_construct(obj, cxx_construct);
++		((id (*)(id, SEL))cls->cxx_construct)(obj, cxx_construct);
+ 	}
+ }
+ 
+@@ -846,4 +846,3 @@ void objc_registerClassPair(Class cls)
+ 	class_table_insert(cls);
+ 	objc_resolve_class(cls);
+ }
+-
+diff --git a/selector_table.cc b/selector_table.cc
+index 5fc68af..4521e54 100644
+--- a/selector_table.cc
++++ b/selector_table.cc
+@@ -95,6 +95,16 @@ struct TypeList : public std::forward_list<const char*>
+  */
+ std::vector<TypeList> *selector_list;
+ 
++#ifdef __wasm__
++/**
++ * WebAssembly uses a 32-bit linear address space and static data may begin at
++ * 64 KiB.  This can overlap the selector indexes (which also begin at 64 KiB),
++ * so the usual numeric range test cannot distinguish an unregistered name
++ * pointer from a registered selector index.
++ */
++tsl::robin_set<SEL> *registered_selector_addresses;
++#endif
++
+ /**
+  * Lock protecting the selector table.
+  */
+@@ -120,11 +130,17 @@ inline TypeList *selLookup(uint32_t idx)
+ 
+ BOOL isSelRegistered(SEL sel)
+ {
++#ifdef __wasm__
++	LockGuard g{selector_table_lock};
++	return registered_selector_addresses->find(sel) !=
++	       registered_selector_addresses->end();
++#else
+ 	if (sel->index < selector_list->size())
+ 	{
+ 		return YES;
+ 	}
+ 	return NO;
++#endif
+ }
+ 
+ /// Gets the name of a registered selector.
+@@ -364,6 +380,9 @@ extern "C" PRIVATE void init_selector_tables()
+ {
+ 	selector_list = new std::vector<TypeList>(1<<16);
+ 	selector_table = new SelectorTable(1024);
++#ifdef __wasm__
++	registered_selector_addresses = new tsl::robin_set<SEL>(1024);
++#endif
+ 	selector_table_lock.init();
+ }
+ 
+@@ -385,6 +404,9 @@ static inline void add_selector_to_table(SEL aSel)
+ 	selector_list->push_back({aSel->name});
+ 	// Set the selector's name to the uid.
+ 	aSel->index = selector_list->size() - 1;
++#ifdef __wasm__
++	registered_selector_addresses->insert(aSel);
++#endif
+ 	// Store the selector in the set.
+ 	selector_table->insert(aSel);
+ }
+@@ -444,6 +466,10 @@ extern "C" PRIVATE SEL objc_register_selector(SEL aSel)
+ 	if (nullptr != registered && eq(unregistered, registered))
+ 	{
+ 		aSel->name = registered->name;
++#ifdef __wasm__
++		LockGuard g{selector_table_lock};
++		registered_selector_addresses->insert(aSel);
++#endif
+ 		return registered;
+ 	}
+ 	assert(!(aSel->types && (strstr(aSel->types, "@\"") != nullptr)));

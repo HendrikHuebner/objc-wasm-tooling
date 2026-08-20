@@ -1,0 +1,50 @@
+diff --git a/Source/NSFileManager.m b/Source/NSFileManager.m
+--- a/Source/NSFileManager.m
++++ b/Source/NSFileManager.m
+@@ -1330,6 +1330,6 @@ - (NSString*) currentDirectoryPath
+   if (getcwd(path, PATH_MAX-1) == 0)
+     return nil;
+ #else
+-  if (getwd(path) == 0)
++  if (getcwd(path, PATH_MAX) == 0)
+     return nil;
+ #endif /* HAVE_GETCWD */
+diff --git a/Source/NSObject.m b/Source/NSObject.m
+--- a/Source/NSObject.m
++++ b/Source/NSObject.m
+@@ -1075,4 +1075,4 @@ + (void) initialize
+       {
+-	void	(*handler)(NSInteger);
++	void	(*handler)(int);
+ 
+ 	handler = signal(SIGPIPE, SIG_IGN);
+diff --git a/Source/NSThread.m b/Source/NSThread.m
+--- a/Source/NSThread.m
++++ b/Source/NSThread.m
+@@ -39,2 +39,2 @@
+-#ifndef HAVE_PTHREAD_SPIN_LOCK
++#if !defined(HAVE_PTHREAD_SPIN_LOCK) && !defined(__DEFINED_pthread_spinlock_t)
+ typedef volatile int pthread_spinlock_t;
+diff --git a/Source/inet_ntop.m b/Source/inet_ntop.m
+--- a/Source/inet_ntop.m
++++ b/Source/inet_ntop.m
+@@ -64,4 +64,4 @@
+ const char *
+ WSAAPI
+-inet_ntop(int af, const void *src, char *dst, size_t size)
++inet_ntop(int af, const void *src, char *dst, socklen_t size)
+ {
+
+diff --git a/Source/NSThread.m b/Source/NSThread.m
+--- a/Source/NSThread.m
++++ b/Source/NSThread.m
+@@ -1160,6 +1160,8 @@ + (double) threadPriority
+     pri = 1 - (priority + 20) / 39.0;
+ #elif defined(__ANDROID__)
+ /* See notes in setThreadPriority
+  */
++#elif defined(__EMSCRIPTEN__)
++  return pri;
+ #elif defined(_POSIX_THREAD_PRIORITY_SCHEDULING) && (_POSIX_THREAD_PRIORITY_SCHEDULING > 0)
+   int res;
+   int policy;

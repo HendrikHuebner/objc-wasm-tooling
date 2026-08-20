@@ -1,0 +1,32 @@
+diff --git a/associate.mm b/associate.mm
+index 9cee7b8..f4fc684 100644
+--- a/associate.mm
++++ b/associate.mm
+@@ -165,6 +165,7 @@ static void setReference(struct reference_list *list,
+ 		lock = lock_for_pointer(r);
+ 		lock->lock();
+ 	}
++	// Preserve the state update and unlock when releasing the old value throws.
+ 	@try
+ 	{
+ 		if (OBJC_ASSOCIATION_ASSIGN != r->policy)
+@@ -172,11 +173,18 @@ static void setReference(struct reference_list *list,
+ 			objc_release((id)r->object);
+ 		}
+ 	}
+-	@finally
++	@catch (...)
+ 	{
+ 		r->policy = policy;
+ 		r->object = obj;
++		if (needLock)
++		{
++			lock->unlock();
++		}
++		@throw;
+ 	}
++	r->policy = policy;
++	r->object = obj;
+ 	if (needLock)
+ 	{
+ 		lock->unlock();

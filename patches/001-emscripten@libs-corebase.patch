@@ -1,0 +1,43 @@
+diff --git a/Source/CFUUID.c b/Source/CFUUID.c
+index 3ad264a..0bf9b60 100644
+--- a/Source/CFUUID.c
++++ b/Source/CFUUID.c
+@@ -64,11 +64,11 @@ static void CFsrandomdev (void)
+   #include <sys/types.h>
+   #include <sys/stat.h>
+   #include <time.h>
++  #include <unistd.h>
+   #define INITRANDOM() CFsrandomdev()
+   #if defined(__linux__)
+     #include <fcntl.h>
+     #include <errno.h>
+-    #include <unistd.h>
+ static void CFsrandomdev(void)
+ {
+   int fd;
+@@ -351,4 +351,3 @@ CFUUIDGetTypeID (void)
+ {
+   return _kCFUUIDTypeID;
+ }
+-
+diff --git a/Source/GSPrivate.h b/Source/GSPrivate.h
+index 7e7eb58..9f894da 100644
+--- a/Source/GSPrivate.h
++++ b/Source/GSPrivate.h
+@@ -88,7 +88,7 @@
+ #define GSMutexInitialize(x) pthread_mutex_init(x, NULL)
+ #define GSMutexLock(x) pthread_mutex_lock(x)
+ #define GSMutexUnlock(x) pthread_mutex_unlock(x)
+-#define GSMutexDestroy(x) pthraed_mutex_destroy(x)
++#define GSMutexDestroy(x) pthread_mutex_destroy(x)
+ 
+ #if defined(__llvm__) \
+       || (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 1))
+diff --git a/configure.ac b/configure.ac
+index d9beb3e..42ef40b 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -115,1 +115,1 @@
+-AS_IF([test x"with_icu" != xno],
++AS_IF([test x"$with_icu" != xno],
+

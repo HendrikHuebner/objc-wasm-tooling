@@ -1,0 +1,18 @@
+diff --git a/clang/lib/CodeGen/CGObjCGNU.cpp b/clang/lib/CodeGen/CGObjCGNU.cpp
+index 399bbf81025c..a4c18aad0cba 100644
+--- a/clang/lib/CodeGen/CGObjCGNU.cpp
++++ b/clang/lib/CodeGen/CGObjCGNU.cpp
+@@ -2384,9 +2384,9 @@ CGObjCGNU::CGObjCGNU(CodeGenModule &cgm, unsigned runtimeABIVersion,
+   auto Triple = cgm.getContext().getTargetInfo().getTriple();
+ 
+   msgSendMDKind = VMContext.getMDKindID("GNUObjCMessageSend");
+-  auto Triple = cgm.getContext().getTargetInfo().getTriple();
+   usesSEHExceptions = Triple.isWindowsMSVCEnvironment();
+-  usesCxxExceptions = (Triple.isOSCygMing() &&
+-      isRuntime(ObjCRuntime::GNUstep, 2)) || Triple.isWasm();
++  usesCxxExceptions =
++      (Triple.isOSCygMing() && isRuntime(ObjCRuntime::GNUstep, 2)) ||
++      Triple.isWasm();
+ 
+   CodeGenTypes &Types = CGM.getTypes();
+

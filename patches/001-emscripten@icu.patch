@@ -1,0 +1,47 @@
+diff --git a/icu4c/source/acinclude.m4 b/icu4c/source/acinclude.m4
+--- a/icu4c/source/acinclude.m4
++++ b/icu4c/source/acinclude.m4
+@@ -87,0 +88 @@ powerpc*-apple-darwin*)	icu_cv_host_frag=mh-darwin-ppc ;;
++*-emscripten)	icu_cv_host_frag=mh-wasi ;;
++*-*-darwin*)	icu_cv_host_frag=mh-darwin ;;
+@@ -495 +495,0 @@ AC_DEFUN([AC_CHECK_STRICT_COMPILE],
+-
+diff --git a/icu4c/source/configure b/icu4c/source/configure
+--- a/icu4c/source/configure
++++ b/icu4c/source/configure
+@@ -5835,0 +5836 @@ powerpc*-apple-darwin*)	icu_cv_host_frag=mh-darwin-ppc ;;
++*-emscripten)	icu_cv_host_frag=mh-wasi ;;
++*-*-darwin*)	icu_cv_host_frag=mh-darwin ;;
+@@ -8066 +8067 @@ fi
+-if test "$tools" = true || test "$cross_compiling" = "yes"; then
++if test "$tools" = true || test "$cross_compiling" = "yes" || test "$host_os" = "emscripten"; then
+@@ -9651 +9651,0 @@ $as_unset _CXX_CXXSUFFIX
+-
+diff --git a/icu4c/source/config/mh-wasi b/icu4c/source/config/mh-wasi
+new file mode 100644
+--- /dev/null
++++ b/icu4c/source/config/mh-wasi
+@@ -0,0 +1,23 @@
++## -*-makefile-*-
++## ICU static WebAssembly / Emscripten setup.
++
++GEN_DEPS.c= $(CC) -E -MM $(DEFS) $(CPPFLAGS)
++GEN_DEPS.cc= $(CXX) -E -MM $(DEFS) $(CPPFLAGS) $(CXXFLAGS)
++
++THREADSCPPFLAGS = -D_REENTRANT
++LIBCPPFLAGS =
++LDFLAGSICUDT =
++STATIC_O = ao
++
++%.$(STATIC_O): $(srcdir)/%.c
++	$(call SILENT_COMPILE,$(strip $(COMPILE.c) $(STATICCPPFLAGS) $(STATICCFLAGS)) -o $@ $<)
++%.$(STATIC_O): $(srcdir)/%.cpp
++	$(call SILENT_COMPILE,$(strip $(COMPILE.cc) $(STATICCPPFLAGS) $(STATICCXXFLAGS)) -o $@ $<)
++
++%.d: $(srcdir)/%.c
++	@$(SHELL) -ec '$(GEN_DEPS.c) $< | sed '\''s%\($*\)\.o[ :]*%\1.o $@ : %g'\'' > $@; [ -s $@ ] || rm -f $@'
++%.d: $(srcdir)/%.cpp
++	@$(SHELL) -ec '$(GEN_DEPS.cc) $< | sed '\''s%\($*\)\.o[ :]*%\1.o $@ : %g'\'' > $@; [ -s $@ ] || rm -f $@'
++
++STATIC_PREFIX_WHEN_USED =
++STATIC_PREFIX =
