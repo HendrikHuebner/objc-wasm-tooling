@@ -1,0 +1,224 @@
+From 956c933ce1ab81f0c7cca47b36bf43f53f0b69db Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Hendrik=20H=C3=BCbner?= <hhuebner@MacBookPro.lan>
+Date: Tue, 11 Aug 2026 23:13:22 +0200
+Subject: [PATCH] [Wasm] Add -ObjC archive loading support
+
+---
+ lld/test/wasm/Inputs/objc-archive.ll      |  5 ++++
+ lld/test/wasm/Inputs/objc-archive.s       |  5 ++++
+ lld/test/wasm/Inputs/ordinary-archive.s   |  5 ++++
+ lld/test/wasm/objc-flag.s                 | 25 ++++++++++++++++
+ lld/wasm/Config.h                         |  1 +
+ lld/wasm/Driver.cpp                       | 36 ++++++++++++++++++++---
+ lld/wasm/Options.td                       |  3 ++
+ llvm/lib/Bitcode/Reader/BitcodeReader.cpp |  2 ++
+ llvm/test/LTO/gnustep-objc-detection.ll   |  9 ++++++
+ 9 files changed, 87 insertions(+), 4 deletions(-)
+ create mode 100644 lld/test/wasm/Inputs/objc-archive.ll
+ create mode 100644 lld/test/wasm/Inputs/objc-archive.s
+ create mode 100644 lld/test/wasm/Inputs/ordinary-archive.s
+ create mode 100644 lld/test/wasm/objc-flag.s
+ create mode 100644 llvm/test/LTO/gnustep-objc-detection.ll
+
+diff --git a/lld/test/wasm/Inputs/objc-archive.ll b/lld/test/wasm/Inputs/objc-archive.ll
+new file mode 100644
+index 000000000000..01cea77f9bbb
+--- /dev/null
++++ b/lld/test/wasm/Inputs/objc-archive.ll
+@@ -0,0 +1,5 @@
++target datalayout = "e-m:e-p:32:32-p10:8:8-p20:8:8-i64:64-n32:64-S128-ni:1:10:20"
++target triple = "wasm32-unknown-unknown"
++
++@objc_category_marker = global [1 x i32] zeroinitializer, section "__objc_cats"
++@llvm.used = appending global [1 x ptr] [ptr @objc_category_marker]
+diff --git a/lld/test/wasm/Inputs/objc-archive.s b/lld/test/wasm/Inputs/objc-archive.s
+new file mode 100644
+index 000000000000..71204d3a2c53
+--- /dev/null
++++ b/lld/test/wasm/Inputs/objc-archive.s
+@@ -0,0 +1,5 @@
++.section __objc_cats,"R",@
++.globl objc_category_marker
++objc_category_marker:
++  .int32 0
++.size objc_category_marker, 4
+diff --git a/lld/test/wasm/Inputs/ordinary-archive.s b/lld/test/wasm/Inputs/ordinary-archive.s
+new file mode 100644
+index 000000000000..6b339305d724
+--- /dev/null
++++ b/lld/test/wasm/Inputs/ordinary-archive.s
+@@ -0,0 +1,5 @@
++.section .data.unused,"",@
++.globl ordinary_marker
++ordinary_marker:
++  .int32 0
++.size ordinary_marker, 4
+diff --git a/lld/test/wasm/objc-flag.s b/lld/test/wasm/objc-flag.s
+new file mode 100644
+index 000000000000..03405810277c
+--- /dev/null
++++ b/lld/test/wasm/objc-flag.s
+@@ -0,0 +1,25 @@
++# RUN: llvm-mc -filetype=obj -triple=wasm32-unknown-unknown %s -o %t.main.o
++# RUN: llvm-mc -filetype=obj -triple=wasm32-unknown-unknown %S/Inputs/objc-archive.s -o %t.objc.o
++# RUN: llvm-mc -filetype=obj -triple=wasm32-unknown-unknown %S/Inputs/ordinary-archive.s -o %t.ordinary.o
++# RUN: llvm-as %S/Inputs/objc-archive.ll -o %t.objc.bc
++# RUN: llvm-ar rcs %t.a %t.objc.o %t.ordinary.o
++# RUN: llvm-ar rcs %t.bc.a %t.objc.bc
++# RUN: wasm-ld --no-gc-sections %t.main.o %t.a -o %t.default.wasm
++# RUN: wasm-ld --no-gc-sections -ObjC %t.main.o %t.a -o %t.objc.wasm
++# RUN: wasm-ld --no-gc-sections -ObjC %t.main.o --start-lib %t.objc.o %t.ordinary.o --end-lib -o %t.start-lib.wasm
++# RUN: wasm-ld --no-gc-sections -ObjC %t.main.o %t.bc.a -o %t.objc-bitcode.wasm
++# RUN: obj2yaml %t.default.wasm | FileCheck %s --check-prefix=DEFAULT
++# RUN: obj2yaml %t.objc.wasm | FileCheck %s --check-prefix=OBJC
++# RUN: obj2yaml %t.start-lib.wasm | FileCheck %s --check-prefix=STARTLIB
++# RUN: obj2yaml %t.objc-bitcode.wasm | FileCheck %s --check-prefix=OBJC-BITCODE
++
++# DEFAULT-NOT: Name:            __objc_cats
++# OBJC:         Name:            __objc_cats
++# STARTLIB:      Name:            __objc_cats
++# OBJC-BITCODE:   Name:            __objc_cats
++
++.functype _start () -> ()
++.globl _start
++_start:
++  .functype _start () -> ()
++  end_function
+diff --git a/lld/wasm/Config.h b/lld/wasm/Config.h
+index f2f1b895f5b6..1118250e0c85 100644
+--- a/lld/wasm/Config.h
++++ b/lld/wasm/Config.h
+@@ -62,6 +62,7 @@ struct Config {
+   bool exportDynamic;
+   bool exportTable;
+   bool extendedConst;
++  bool forceLoadObjC;
+   bool growableTable;
+   bool gcSections;
+   llvm::StringSet<> keepSections;
+diff --git a/lld/wasm/Driver.cpp b/lld/wasm/Driver.cpp
+index 740e8878c6e0..a8147fb29748 100644
+--- a/lld/wasm/Driver.cpp
++++ b/lld/wasm/Driver.cpp
+@@ -22,9 +22,11 @@
+ #include "lld/Common/Strings.h"
+ #include "lld/Common/Version.h"
+ #include "llvm/ADT/Twine.h"
++#include "llvm/Bitcode/BitcodeReader.h"
+ #include "llvm/Config/llvm-config.h"
+ #include "llvm/Option/Arg.h"
+ #include "llvm/Option/ArgList.h"
++#include "llvm/Object/Binary.h"
+ #include "llvm/Support/CommandLine.h"
+ #include "llvm/Support/Parallel.h"
+ #include "llvm/Support/Path.h"
+@@ -123,6 +125,24 @@ static bool hasZOption(opt::InputArgList &args, StringRef key) {
+     }
+   return ret;
+ }
++
++static bool hasObjCSection(MemoryBufferRef mb) {
++  switch (identify_magic(mb.getBuffer())) {
++  case file_magic::wasm_object: {
++    auto bin = check(createBinary(mb));
++    auto *obj = cast<WasmObjectFile>(bin.get());
++    for (const WasmSegment &segment : obj->dataSegments())
++      if (segment.Data.Name == "__objc_classes" ||
++          segment.Data.Name == "__objc_cats")
++        return true;
++    return false;
++  }
++  case file_magic::bitcode:
++    return check(isBitcodeContainingObjCCategory(mb));
++  default:
++    return false;
++  }
++}
+ } // anonymous namespace
+ 
+ bool link(ArrayRef<const char *> args, llvm::raw_ostream &stdoutOS,
+@@ -329,18 +349,25 @@ void LinkerDriver::addFile(StringRef path) {
+ 
+     for (const auto &[m, offset] : members) {
+       auto magic = identify_magic(m.getBuffer());
+-      if (magic == file_magic::wasm_object || magic == file_magic::bitcode)
+-        files.push_back(createObjectFile(m, path, offset, true));
+-      else
++      if (magic != file_magic::wasm_object && magic != file_magic::bitcode) {
+         warn(path + ": archive member '" + m.getBufferIdentifier() +
+              "' is neither Wasm object file nor LLVM bitcode");
++        continue;
++      }
++
++      auto *object = createObjectFile(m, path, offset,
++                                      /*lazy=*/!ctx.arg.forceLoadObjC ||
++                                          !hasObjCSection(m));
++      files.push_back(object);
+     }
+ 
+     return;
+   }
+   case file_magic::bitcode:
+   case file_magic::wasm_object: {
+-    auto obj = createObjectFile(mbref, "", 0, inLib);
++    auto obj = createObjectFile(
++        mbref, "", 0,
++        inLib && (!ctx.arg.forceLoadObjC || !hasObjCSection(mbref)));
+     if (ctx.arg.isStatic && isa<SharedFile>(obj)) {
+       error("attempted static link of dynamic object " + path);
+       break;
+@@ -655,6 +682,7 @@ static void readConfigs(opt::InputArgList &args) {
+   // Default value of exportDynamic depends on `-shared`
+   ctx.arg.exportDynamic =
+       args.hasFlag(OPT_export_dynamic, OPT_no_export_dynamic, ctx.arg.shared);
++  ctx.arg.forceLoadObjC = args.hasArg(OPT_ObjC);
+ 
+   // Parse wasm32/64.
+   if (auto *arg = args.getLastArg(OPT_m)) {
+diff --git a/lld/wasm/Options.td b/lld/wasm/Options.td
+index bd46794e067b..194270823cb8 100644
+--- a/lld/wasm/Options.td
++++ b/lld/wasm/Options.td
+@@ -74,6 +74,9 @@ defm export_dynamic: B<"export-dynamic",
+     "Put symbols in the dynamic symbol table",
+     "Do not put symbols in the dynamic symbol table (default)">;
+ 
++def ObjC : Flag<["-"], "ObjC">,
++  HelpText<"Load all members of static archives that contain Objective-C classes or categories">;
++
+ def end_lib: F<"end-lib">,
+   HelpText<"End a grouping of objects that should be treated as if they were together in an archive">;
+ 
+diff --git a/llvm/lib/Bitcode/Reader/BitcodeReader.cpp b/llvm/lib/Bitcode/Reader/BitcodeReader.cpp
+index ac61ede6395a..fddc2c0077cf 100644
+--- a/llvm/lib/Bitcode/Reader/BitcodeReader.cpp
++++ b/llvm/lib/Bitcode/Reader/BitcodeReader.cpp
+@@ -301,6 +301,8 @@ static Expected<bool> hasObjCCategoryInModule(BitstreamCursor &Stream) {
+       Segment = Segment.trim();
+       Section = Section.trim();
+ 
++      if (S == "__objc_classes" || S == "__objc_cats")
++        return true;
+       if (Segment == "__DATA" && Section.starts_with("__objc_catlist"))
+         return true;
+       if (Segment == "__OBJC" && Section.starts_with("__category"))
+diff --git a/llvm/test/LTO/gnustep-objc-detection.ll b/llvm/test/LTO/gnustep-objc-detection.ll
+new file mode 100644
+index 000000000000..5e83fccef897
+--- /dev/null
++++ b/llvm/test/LTO/gnustep-objc-detection.ll
+@@ -0,0 +1,9 @@
++; RUN: llvm-as < %s -o %t
++; RUN: llvm-lto -check-for-objc %t | FileCheck %s
++
++; CHECK: contains ObjC
++
++target triple = "wasm32-unknown-emscripten"
++
++@category = global [1 x ptr] zeroinitializer, section "__objc_cats"
++@class = global [1 x ptr] zeroinitializer, section "__objc_classes"
+-- 
+2.50.1 (Apple Git-155)
+
+
+

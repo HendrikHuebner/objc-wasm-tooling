@@ -1,0 +1,120 @@
+diff --git a/src/jsifier.mjs b/src/jsifier.mjs
+index 77a534648..8604a29fc 100644
+--- a/src/jsifier.mjs
++++ b/src/jsifier.mjs
+@@ -759,6 +759,9 @@ function(${args}) {
+         isFunction = true;
+       }
+ 
++      const jsName = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(mangled)
++        ? mangled
++        : '_emscripten_' + mangled.replace(/[^A-Za-z0-9_$]/g, '_');
+       if (isFunction) {
+         snippet = processLibraryFunction(snippet, symbol, mangled, deps, isStub);
+         addImplicitDeps(snippet, deps);
+@@ -786,6 +789,8 @@ function(${args}) {
+       let contentText;
+       if (isFunction) {
+         // Emit the body of a JS library function.
++        // Keep punctuation-bearing Wasm names as object keys, but use a valid
++        // private binding for the generated JavaScript glue.
+         if ((USE_ASAN || USE_LSAN) && LibraryManager.library[symbol + '__noleakcheck']) {
+           contentText = modifyJSFunction(
+             snippet,
+@@ -800,20 +805,20 @@ function(${args}) {
+         // modifyJSFunction which could have changed or removed the name.
+         if (contentText.match(/^\s*([^}]*)\s*=>/s)) {
+           // Handle arrow functions
+-          contentText = `var ${mangled} = ` + contentText + ';';
++          contentText = `var ${jsName} = ` + contentText + ';';
+         } else if (contentText.startsWith('class ')) {
+           // Handle class declarations (which also have typeof == 'function'.)
+-          contentText = contentText.replace(/^class(?:\s+(?!extends\b)[^{\s]+)?/, `class ${mangled}`);
++          contentText = contentText.replace(/^class(?:\s+(?!extends\b)[^{\s]+)?/, `class ${jsName}`);
+         } else {
+           // Handle regular (non-arrow) functions
+-          contentText = contentText.replace(/function(?:\s+([^(]+))?\s*\(/, `function ${mangled}(`);
++          contentText = contentText.replace(/function(?:\s+([^(]+))?\s*\(/, `function ${jsName}(`);
+         }
+       } else if (typeof snippet == 'string' && snippet.startsWith(';')) {
+         // In JS libraries
+         //   foo: ';[code here verbatim]'
+         //  emits
+         //   'var foo;[code here verbatim];'
+-        contentText = 'var ' + mangled + snippet;
++        contentText = 'var ' + jsName + snippet;
+         if (snippet[snippet.length - 1] != ';' && snippet[snippet.length - 1] != '}') {
+           contentText += ';';
+         }
+@@ -849,14 +854,14 @@ function(${args}) {
+         if (!WASM_BIGINT) {
+           sig = sig[0].replace('j', 'i') + sig.slice(1).replace(/j/g, 'ii');
+         }
+-        contentText += `\n${mangled}.sig = '${sig}';`;
++        contentText += `\n${jsName}.sig = '${sig}';`;
+       }
+       if (ASYNCIFY && isAsyncFunction) {
+         assert(isFunction);
+-        contentText += `\n${mangled}.isAsync = true;`;
++        contentText += `\n${jsName}.isAsync = true;`;
+       }
+       if (isStub) {
+-        contentText += `\n${mangled}.stub = true;`;
++        contentText += `\n${jsName}.stub = true;`;
+         if (ASYNCIFY && MAIN_MODULE) {
+           contentText += `\nasyncifyStubs['${symbol}'] = undefined;`;
+         }
+diff --git a/tools/emscripten.py b/tools/emscripten.py
+index a5dd780fd..3fe29dc6c 100644
+--- a/tools/emscripten.py
++++ b/tools/emscripten.py
+@@ -874,7 +874,9 @@ def create_sending(metadata, library_symbols):
+       if not settings.WASM_ESM_INTEGRATION:
+         send_items_map[name] = name
+     else:
+-      send_items_map[name] = asmjs_mangle(name)
++      # Match jsifier.mjs: a leading '$' already denotes a JS-side symbol and
++      # is stripped instead of receiving a second underscore.
++      send_items_map[name] = name[1:] if name.startswith('$') else asmjs_mangle(name)
+ 
+   add_standard_wasm_imports(send_items_map)
+ 
+@@ -919,10 +921,15 @@ def create_sending(metadata, library_symbols):
+ 
+   elems = []
+   for k, v in sorted_items:
+-    if k == v:
++    # Keep punctuation-bearing Wasm names as object keys, but refer to the
++    # corresponding JavaScript glue binding using a valid identifier.
++    if not js_manipulation.isidentifier(v):
++      v = '_emscripten_' + ''.join(c if c.isalnum() or c in '_$' else '_' for c in v)
++    if k == v and js_manipulation.isidentifier(k):
+       elems.append(f'{prefix}{k}')
+     else:
+-      elems.append(f'{prefix}{k}: {v}')
++      key = k if js_manipulation.isidentifier(k) else f"'{k}'"
++      elems.append(f'{prefix}{key}: {v}')
+ 
+   return '{\n  ' + ',\n  '.join(elems) + '\n}'
+ 
+@@ -1061,7 +1068,9 @@ def create_receiving(function_exports, other_exports, library_symbols, aliases):
+   for sym, info in exports.items():
+     is_function = type(info) == webassembly.FuncType
+     mangled = asmjs_mangle(sym)
+-    assignment = mangled
++    binding = mangled if js_manipulation.isidentifier(mangled) else \
++      '_emscripten_' + ''.join(c if c.isalnum() or c in '_$' else '_' for c in mangled)
++    assignment = binding
+     if generate_dyncall_assignment and is_function and sym.startswith('dynCall_'):
+       sig_str = sym.removeprefix('dynCall_')
+       assignment += f" = dynCalls['{sig_str}']"
+@@ -1069,7 +1078,7 @@ def create_receiving(function_exports, other_exports, library_symbols, aliases):
+       if js_manipulation.isidentifier(mangled):
+         assignment += f" = Module['{mangled}']"
+       else:
+-        assignment = f"Module['{mangled}']"
++        assignment = f"Module['{mangled}'] = {binding}"
+     elif not js_manipulation.isidentifier(mangled):
+       # Symbol is not a valid JS identifier and also not exported. In this case we
+       # have nothing to do here.
+

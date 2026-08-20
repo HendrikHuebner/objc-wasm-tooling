@@ -64,6 +64,7 @@ mkdir -p "$EM_CACHE"
 
 "$QT_PREFIX/bin/qt-cmake" \
     -S "$SCRIPT_DIR" -B "$BUILD" -G Ninja \
+    -DCMAKE_BUILD_TYPE=MinSizeRel \
     -DOBJC_RUNTIME="$WORKDIR/build-libobjc2/libobjc.a" \
     -DOBJC_INCLUDE="$WORKDIR/build-libobjc2/install/include" \
     -DBASE_INCLUDE="$WORKDIR/build-libs-base/install/include" \

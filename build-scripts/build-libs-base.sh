@@ -7,8 +7,13 @@ source "$SCRIPT_DIR/common.sh"
 require_workdir "${1:-}"
 require_toolchain
 SOURCE=$(source_dir libs-base)
-BUILD=$(build_dir libs-base)
-PREFIX=$(prefix_dir libs-base)
+if [[ "${LIBS_BASE_SHARED:-no}" == yes ]]; then
+    BUILD=$(build_dir libs-base-side)
+    PREFIX=$(prefix_dir libs-base-side)
+else
+    BUILD=$(build_dir libs-base)
+    PREFIX=$(prefix_dir libs-base)
+fi
 FFI_PREFIX=$(prefix_dir libffi)
 MAKEFILES=$(gnustep_makefiles)
 MAKE_PREFIX=$(CDPATH= cd -- "$MAKEFILES/../../.." && pwd)
@@ -92,6 +97,21 @@ ln -sf "$BUILD/config.status" "$SOURCE/config.status"
 ln -sf "$BUILD/Source/gnustep-base.pc" "$SOURCE/Source/gnustep-base.pc"
 ln -sf "$BUILD/Headers/GNUstepBase/config.h" "$SOURCE/Headers/GNUstepBase/config.h"
 ln -sf "$BUILD/Headers/GNUstepBase/GSConfig.h" "$SOURCE/Headers/GNUstepBase/GSConfig.h"
+ln -sf "$BUILD/Headers/GNUstepBase/config.h" "$SOURCE/Source/config.h"
+ln -sf "$BUILD/Headers/GNUstepBase/GSConfig.h" "$SOURCE/Source/GNUstepBase/GSConfig.h"
+if [[ "${LIBS_BASE_SHARED:-no}" == yes ]]; then
+    SHARED_LIB_LINK_CMD='$(CC) -sSIDE_MODULE=1 $(ALL_LDFLAGS) -o $(LIB_LINK_OBJ_DIR)/$(LIB_LINK_VERSION_FILE) $^ $(INTERNAL_LIBRARIES_DEPEND_UPON) $(SHARED_LD_POSTFLAGS)'
+    make -C "$SOURCE/Source" GNUSTEP_BUILD_DIR="$BUILD" GNUSTEP_TARGET_OS=emscripten GNUSTEP_TARGET_CPU=wasm32 \
+        AR=emar RANLIB=emranlib OBJC2RUNTIME=1 shared=yes base=yes add=no \
+        HAVE_SHARED_LIBS=yes SHARED_LIBEXT=.wasm SHARED_CFLAGS=-fPIC \
+        SHARED_LIB_LINK_CMD="$SHARED_LIB_LINK_CMD" -j"$(build_jobs)"
+    make -C "$SOURCE/Source" GNUSTEP_BUILD_DIR="$BUILD" GNUSTEP_TARGET_OS=emscripten GNUSTEP_TARGET_CPU=wasm32 \
+        AR=emar RANLIB=emranlib OBJC2RUNTIME=1 shared=yes base=yes add=no \
+        HAVE_SHARED_LIBS=yes SHARED_LIBEXT=.wasm SHARED_CFLAGS=-fPIC \
+        SHARED_LIB_LINK_CMD="$SHARED_LIB_LINK_CMD" \
+        GNUSTEP_LOCAL_LIBRARY="$PREFIX" GNUSTEP_LOCAL_LIBRARIES="$PREFIX/lib" GNUSTEP_LOCAL_HEADERS="$PREFIX/include" install
+    exit 0
+fi
 LIB_LINK_CMD="$WORKDIR/build-emscripten/bin/emar rcs "'$@ $^'
 MAKE_INSTALL_VARS="GNUSTEP_LOCAL_LIBRARY=$PREFIX GNUSTEP_LOCAL_LIBRARIES=$PREFIX/lib GNUSTEP_LOCAL_HEADERS=$PREFIX/include"
 make -C "$SOURCE/Source" AR=emar RANLIB=emranlib OBJC2RUNTIME=1 shared=no base=yes add=no LIB_LINK_CMD="$LIB_LINK_CMD" -j1

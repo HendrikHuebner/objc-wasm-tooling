@@ -30,6 +30,11 @@ Download all the repos/dependencies (Including some optional ones like qt, libff
  python3 download-deps.py dependencies.toml --dir workdir
 ```
 
+Apply Patches:
+```
+./build-scripts/patch-all.sh dependencies.toml --dir workdir
+```
+
 Build:
 ```
 sh build-scripts/build-all.sh workdir  
@@ -40,6 +45,11 @@ Tests:
 python3 tests/test.py --workdir workdir --suite all
 ```
 
+## Objective-C in the browser demo
+
+See demo directory.
+
+This example runs a small Qt-UI in the webbrowser, with a small Objective-C Model-View-Controller separation to demonstrate KVO.
 
 ## Limitations
 

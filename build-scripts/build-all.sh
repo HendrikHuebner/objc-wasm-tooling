@@ -101,6 +101,9 @@ for project in "${projects[@]}"; do
         status=$?
         printf 'failed: %s (exit %s; log: %s)\n' "$project" "$status" "$log"
         printf '\nbuild failed with exit status %s\n' "$status" >> "$log"
+        printf '\n===== BEGIN BUILD LOG: %s =====\n' "$project"
+        cat "$log"
+        printf '===== END BUILD LOG: %s =====\n' "$project"
         failed+=("$project")
     fi
 done
@@ -121,3 +124,7 @@ if ((${#built[@]})); then print_group 'Built' "${built[@]}"; else print_group 'B
 if ((${#not_built[@]})); then print_group 'Not built' "${not_built[@]}"; else print_group 'Not built'; fi
 if ((${#failed[@]})); then print_group 'Failed' "${failed[@]}"; else print_group 'Failed'; fi
 printf 'Logs: %s\n' "$LOG_DIR"
+
+if ((${#failed[@]})); then
+    exit 1
+fi

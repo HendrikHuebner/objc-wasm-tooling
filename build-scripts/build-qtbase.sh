@@ -64,6 +64,7 @@ cd "$BUILD"
     -- \
     -DCMAKE_C_FLAGS='-fwasm-exceptions -sWASM_LEGACY_EXCEPTIONS=0' \
     -DCMAKE_CXX_FLAGS='-fwasm-exceptions -sWASM_LEGACY_EXCEPTIONS=0' \
+    -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF \
     "${CCACHE_CMAKE_ARGS[@]}"
 cmake --build "$BUILD" --parallel "$(build_jobs)"
 cmake --install "$BUILD"

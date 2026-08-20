@@ -51,6 +51,14 @@ jobs:
       - name: Build toolchain and libraries
         run: build-scripts/build-all.sh "$WORKDIR"
 
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: workdir/build-logs
+          if-no-files-found: warn
+
       - name: Show compiler cache statistics
         if: always()
         run: ccache --show-stats

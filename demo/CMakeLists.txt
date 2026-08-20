@@ -29,11 +29,12 @@ target_compile_options(objc-wasm-mvc PRIVATE
     -sWASM_LEGACY_EXCEPTIONS=0
     -sSUPPORT_LONGJMP=wasm)
 target_link_options(objc-wasm-mvc PRIVATE
+    -Os
     -fwasm-exceptions
     -sWASM_LEGACY_EXCEPTIONS=0
     -sSUPPORT_LONGJMP=wasm
     -sALLOW_MEMORY_GROWTH=1
     -Wl,--stack-first
-    "-Wl,--whole-archive" "${BASE_ARCHIVE}" "-Wl,--no-whole-archive"
+    "-Wl,-ObjC" "${BASE_ARCHIVE}"
     "${OBJC_RUNTIME}" "${FFI_ARCHIVE}")
 target_link_libraries(objc-wasm-mvc PRIVATE Qt6::Widgets)
