@@ -39,3 +39,13 @@ Tests:
 ```
 python3 tests/test.py --workdir workdir --suite all
 ```
+
+
+## Limitations
+
+This _mostly_ works but there are some caveats, which should be addressed eventually
+
+1. Emscripten "Dynamic Linking" does not work for Objective-C yet, due to more weird issues with emscripten trying to export internal symbols of the runtime to JavaScript and failing due to '$'s
+2. When linking static archives with wasm-ld we currently need to set `--whole-archive` in order to prevent it from garbage collecting seemingly unreachable Objective-C symbols. Wasm-ld needs an `-ObjC` flag to prevent this while allowing linker-gc.
+3. libobjc2's "block-to-IMP" isn't supported, because it mmap's `PROT_EXEC` pages to allocate IMP trampolines which is not possible in WASM.
+4. libs-base is LGPL so generally be careful with static linking it in proprietary code
