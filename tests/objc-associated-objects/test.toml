@@ -1,0 +1,3 @@
+suite = "runtime"
+source = "objc-associated-objects.m"
+expected = "objc-associated-objects: 42"

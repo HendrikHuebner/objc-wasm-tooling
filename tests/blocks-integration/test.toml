@@ -1,0 +1,4 @@
+suite = "runtime"
+source = "blocks-integration.m"
+expected = "blocks-integration: 13/13"
+flags = ["-fblocks"]

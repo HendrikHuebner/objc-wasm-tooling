@@ -1,0 +1,2 @@
+source = "objcxx-ivars.mm"
+expected = "objcxx-ivars: 42"

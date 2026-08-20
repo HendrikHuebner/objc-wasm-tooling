@@ -1,0 +1,3 @@
+source = "objc-arc.m"
+expected = "objc-arc: 42"
+flags = ["-fobjc-arc"]

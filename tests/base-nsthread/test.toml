@@ -1,0 +1,4 @@
+suite = "library"
+source = "base-nsthread.m"
+flags = ["-fobjc-exceptions", "-fexceptions"]
+expected = "base-nsthread: 9/9"

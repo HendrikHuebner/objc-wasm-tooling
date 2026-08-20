@@ -1,0 +1,3 @@
+suite = "library"
+source = "kvo-integration.m"
+expected = "kvo-integration: 3/3"

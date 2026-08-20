@@ -1,0 +1,4 @@
+suite = "runtime"
+source = "objc-exceptions-integration.mm"
+expected = "objc-exceptions-integration: 7/7"
+flags = ["-fobjc-exceptions", "-fexceptions"]

@@ -1,0 +1,4 @@
+suite = "library"
+source = "objc-weak-nil.m"
+expected = "objc-weak-nil: 2/2"
+flags = ["-fobjc-arc"]

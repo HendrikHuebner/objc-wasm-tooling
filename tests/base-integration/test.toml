@@ -1,0 +1,3 @@
+suite = "library"
+source = "base-integration.m"
+expected = "base-integration: 9/9"
