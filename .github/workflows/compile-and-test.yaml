@@ -1,0 +1,60 @@
+name: Compile and test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wasm:
+    name: Build WebAssembly toolchain and tests
+    runs-on: ubuntu-latest
+    env:
+      WORKDIR: ${{ github.workspace }}/workdir
+      CCACHE_DIR: ${{ github.workspace }}/workdir/.ccache
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            autoconf automake ccache cmake g++ git libtool libtool-bin \
+            gnustep-make make ninja-build nodejs perl pkg-config python3
+
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: workdir/.ccache
+          key: ccache-${{ runner.os }}-${{ hashFiles('dependencies.toml', 'patches/*.patch', 'build-scripts/*.sh', 'build-scripts/*.cmake') }}
+          restore-keys: |
+            ccache-${{ runner.os }}-
+
+      - name: Clone pinned sources
+        run: python3 download-deps.py dependencies.toml --dir "$WORKDIR"
+
+      - name: Apply source patches
+        run: build-scripts/patch-all.sh dependencies.toml --dir "$WORKDIR"
+
+      - name: Build toolchain and libraries
+        run: build-scripts/build-all.sh "$WORKDIR"
+
+      - name: Run stable integration tests
+        run: |
+          python3 tests/test.py --workdir "$WORKDIR" --suite runtime
+          for case in base-integration kvo-integration kvo-struct objc-weak-nil; do
+            python3 tests/test.py --workdir "$WORKDIR" --suite library --case "$case"
+          done
+
+      - name: Build and run demo headlessly
+        run: demo/demo.sh --headless
