@@ -26,11 +26,17 @@ import sys
 
 config, llvm, binaryen, node = map(Path, sys.argv[1:])
 config.write_text(
+    "EMSCRIPTEN_ROOT = '../emscripten'\n"
     f"LLVM_ROOT = {str(llvm)!r}\n"
     f"BINARYEN_ROOT = {str(binaryen)!r}\n"
     f"NODE_JS = {str(node)!r}\n"
 )
 PY
+
+# Qt's Wasm CMake helpers look for this conventional Emscripten SDK config
+# name when configuring applications. Keep it in the generated build tree so
+# the source checkout remains untouched.
+ln -sfn emscripten.config "$BUILD/.emscripten"
 
 export EMSDK="$WORKDIR/emsdk"
 export EMSDK_ROOT="$WORKDIR/emsdk"

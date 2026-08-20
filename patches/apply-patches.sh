@@ -92,6 +92,19 @@ text = open(patch_path, encoding="utf-8").read()
 parts = re.split(r"(?m)(?=^From [0-9a-f]{40} )", text)
 parts = [part for part in parts if part.strip()]
 for part in parts:
+    already = subprocess.run(
+        ["git", "-C", checkout, "apply", "--reverse", "--check"],
+        input=part.encode(),
+    )
+    if already.returncode == 0:
+        print("already applied part")
+        continue
+    before = subprocess.run(
+        ["git", "-C", checkout, "status", "--porcelain"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
     result = subprocess.run(
         ["git", "-C", checkout, "apply", "--3way"],
         input=part.encode(),
@@ -102,6 +115,25 @@ for part in parts:
             input=part.encode(),
         )
     if result.returncode:
+        # Mail patches in this queue intentionally overlap: a later cleanup
+        # patch can rewrite a line introduced by an earlier patch.  If the
+        # checkout was already patched, restore the pre-existing side of any
+        # conflict and treat this part as already applied.  A clean checkout
+        # still fails normally, so genuine patch/revision drift is not hidden.
+        conflicted = subprocess.run(
+            ["git", "-C", checkout, "diff", "--name-only", "--diff-filter=U"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.splitlines()
+        if before.strip() and conflicted:
+            subprocess.run(
+                ["git", "-C", checkout, "checkout", "--ours", "--", *conflicted],
+                check=True,
+            )
+            subprocess.run(["git", "-C", checkout, "add", "--", *conflicted], check=True)
+            print("already applied part with overlapping queued changes")
+            continue
         raise SystemExit(result.returncode)
 PY
         then

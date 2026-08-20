@@ -9,6 +9,7 @@ require_toolchain
 SOURCE=$(source_dir libs-base)
 BUILD=$(build_dir libs-base)
 PREFIX=$(prefix_dir libs-base)
+FFI_PREFIX=$(prefix_dir libffi)
 MAKEFILES=$(gnustep_makefiles)
 MAKE_PREFIX=$(CDPATH= cd -- "$MAKEFILES/../../.." && pwd)
 MAKE_BIN=$(gnustep_make_command)
@@ -41,9 +42,9 @@ export OBJC="$WORKDIR/build-emscripten/bin/em++"
 export OBJCXX="$WORKDIR/build-emscripten/bin/em++"
 export CFLAGS="${CFLAGS:-} -fconstant-string-class=NXConstantString -fwasm-exceptions -sWASM_LEGACY_EXCEPTIONS=0 -sSUPPORT_LONGJMP=wasm"
 export OBJCFLAGS="${OBJCFLAGS:-} $CFLAGS"
-export CPPFLAGS="${CPPFLAGS:-} -fobjc-runtime=gnustep-2.0 -DOBJC2RUNTIME=1 -I$WORKDIR/build-libobjc2/install/include"
-export LDFLAGS="${LDFLAGS:-} -L$WORKDIR/build-libobjc2/install/lib -lobjc -fwasm-exceptions -sWASM_LEGACY_EXCEPTIONS=0 -sDEFAULT_TO_CXX=1 -sSUPPORT_LONGJMP=wasm -Wl,--stack-first"
-export LIBS="${LIBS:-} -lobjc"
+export CPPFLAGS="${CPPFLAGS:-} -fobjc-runtime=gnustep-2.0 -DOBJC2RUNTIME=1 -I$WORKDIR/build-libobjc2/install/include -I$FFI_PREFIX/include"
+export LDFLAGS="${LDFLAGS:-} -L$WORKDIR/build-libobjc2/install/lib -L$FFI_PREFIX/lib -lobjc -lffi -fwasm-exceptions -sWASM_LEGACY_EXCEPTIONS=0 -sDEFAULT_TO_CXX=1 -sSUPPORT_LONGJMP=wasm -Wl,--stack-first"
+export LIBS="${LIBS:-} -lobjc -lffi"
 export PKG_CONFIG=/usr/bin/false
 
 cd "$BUILD"
@@ -51,9 +52,10 @@ cross_objc2_runtime=1 cross_non_fragile=yes "$SOURCE/configure" \
     --build="$BUILD_TRIPLET" \
     --host=wasm32-unknown-emscripten \
     --prefix="$PREFIX" \
-    --disable-libffi \
+    --enable-libffi \
     --disable-ffcall \
-    --disable-invocations \
+    --enable-invocations \
+    --disable-newkvo \
     --disable-iconv \
     --disable-xml \
     --disable-xslt \

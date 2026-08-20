@@ -15,9 +15,9 @@ projects=(
     binaryen
     emscripten
     libobjc2
-    libs-base
     zlib
     libffi
+    libs-base
     icu
     libs-corebase
     qtbase
@@ -33,7 +33,7 @@ prerequisites_for() {
         binaryen) printf '\n' ;;
         emscripten) printf 'llvm-project binaryen\n' ;;
         libobjc2) printf 'llvm-project emscripten\n' ;;
-        libs-base) printf 'llvm-project emscripten libobjc2\n' ;;
+        libs-base) printf 'llvm-project emscripten libobjc2 libffi\n' ;;
         zlib|libffi|icu) printf 'llvm-project emscripten\n' ;;
         libs-corebase) printf 'llvm-project emscripten libobjc2 libs-base icu\n' ;;
         qtbase) printf 'llvm-project emscripten\n' ;;

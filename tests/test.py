@@ -24,16 +24,20 @@ def run_case(case: Path, workdir: Path, args: argparse.Namespace) -> bool:
     suite = recipe.get("suite", "runtime")
     base_prefix = workdir / "build-libs-base" / "install"
     base_archive = base_prefix / "lib" / "libgnustep-base.a"
+    ffi_prefix = workdir / "build-libffi" / "install"
+    ffi_archive = ffi_prefix / "lib" / "libffi.a"
     include_paths = [include]
     libraries = [runtime]
     if suite == "library":
         include_paths.insert(0, base_prefix / "include")
+        include_paths.insert(1, ffi_prefix / "include")
         libraries = ["-Wl,--whole-archive", base_archive,
-                     "-Wl,--no-whole-archive", runtime]
+                     "-Wl,--no-whole-archive", runtime, ffi_archive]
 
     required = [compiler, runtime, include]
     if suite == "library":
-        required.extend([base_prefix / "include", base_archive])
+        required.extend([base_prefix / "include", base_archive,
+                         ffi_prefix / "include", ffi_archive])
     missing = [str(path) for path in required if not path.exists()]
     if missing and not args.dry_run:
         print("missing source-built test dependency:")
@@ -47,6 +51,8 @@ def run_case(case: Path, workdir: Path, args: argparse.Namespace) -> bool:
         "-fconstant-string-class=NXConstantString",
         "-fwasm-exceptions", "-sWASM_LEGACY_EXCEPTIONS=0",
         "-sSUPPORT_LONGJMP=wasm", "-Wl,--stack-first",
+        "-sALLOW_TABLE_GROWTH",
+        "-sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=$stackAlloc",
         "-Wno-js-compiler",
         *sum((["-I", str(path)] for path in include_paths), []),
         *recipe.get("flags", []), *map(str, libraries), "-o", str(output),

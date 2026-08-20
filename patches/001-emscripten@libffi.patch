@@ -1,0 +1,11 @@
+diff --git a/src/wasm32/ffi.c b/src/wasm32/ffi.c
+index 6328487..7674225 100644
+--- a/src/wasm32/ffi.c
++++ b/src/wasm32/ffi.c
+@@ -41,5 +41,5 @@
+ #define EM_JS_MACROS(ret, name, args, body...) EM_JS(ret, name, args, body)
+ 
+-EM_JS_DEPS(libffi, "$getWasmTableEntry,$setWasmTableEntry,$getEmptyTableSlot,$convertJsFunctionToWasm");
++EM_JS_DEPS(libffi, "$getWasmTableEntry,$setWasmTableEntry,$getEmptyTableSlot,$convertJsFunctionToWasm,$stackAlloc");
+ 
+ #define DEREF_U8(addr, offset) HEAPU8[addr + offset]

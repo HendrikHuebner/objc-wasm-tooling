@@ -25,6 +25,15 @@ diff --git a/Source/NSThread.m b/Source/NSThread.m
 -#ifndef HAVE_PTHREAD_SPIN_LOCK
 +#if !defined(HAVE_PTHREAD_SPIN_LOCK) && !defined(__DEFINED_pthread_spinlock_t)
  typedef volatile int pthread_spinlock_t;
+@@ -1158,6 +1158,8 @@ + (double) threadPriority
+ 
+   // Convert [-20, 19] to [0.0, 1.0] range
+   pri = 1 - (priority + 20) / 39.0;
++#elif defined(__EMSCRIPTEN__)
++  return pri;
+ #elif defined(_POSIX_THREAD_PRIORITY_SCHEDULING) && (_POSIX_THREAD_PRIORITY_SCHEDULING > 0)
+   int res;
+   int policy;
 diff --git a/Source/inet_ntop.m b/Source/inet_ntop.m
 --- a/Source/inet_ntop.m
 +++ b/Source/inet_ntop.m
@@ -34,17 +43,3 @@ diff --git a/Source/inet_ntop.m b/Source/inet_ntop.m
 -inet_ntop(int af, const void *src, char *dst, size_t size)
 +inet_ntop(int af, const void *src, char *dst, socklen_t size)
  {
-
-diff --git a/Source/NSThread.m b/Source/NSThread.m
---- a/Source/NSThread.m
-+++ b/Source/NSThread.m
-@@ -1160,6 +1160,8 @@ + (double) threadPriority
-     pri = 1 - (priority + 20) / 39.0;
- #elif defined(__ANDROID__)
- /* See notes in setThreadPriority
-  */
-+#elif defined(__EMSCRIPTEN__)
-+  return pri;
- #elif defined(_POSIX_THREAD_PRIORITY_SCHEDULING) && (_POSIX_THREAD_PRIORITY_SCHEDULING > 0)
-   int res;
-   int policy;

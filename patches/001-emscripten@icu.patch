@@ -1,21 +1,22 @@
 diff --git a/icu4c/source/acinclude.m4 b/icu4c/source/acinclude.m4
 --- a/icu4c/source/acinclude.m4
 +++ b/icu4c/source/acinclude.m4
-@@ -87,0 +88 @@ powerpc*-apple-darwin*)	icu_cv_host_frag=mh-darwin-ppc ;;
+@@ -87,0 +88,2 @@
 +*-emscripten)	icu_cv_host_frag=mh-wasi ;;
 +*-*-darwin*)	icu_cv_host_frag=mh-darwin ;;
-@@ -495 +495,0 @@ AC_DEFUN([AC_CHECK_STRICT_COMPILE],
+@@ -494,2 +494,0 @@
+-
 -
 diff --git a/icu4c/source/configure b/icu4c/source/configure
 --- a/icu4c/source/configure
 +++ b/icu4c/source/configure
-@@ -5835,0 +5836 @@ powerpc*-apple-darwin*)	icu_cv_host_frag=mh-darwin-ppc ;;
+@@ -5835,0 +5836,2 @@
 +*-emscripten)	icu_cv_host_frag=mh-wasi ;;
 +*-*-darwin*)	icu_cv_host_frag=mh-darwin ;;
-@@ -8066 +8067 @@ fi
+@@ -8066,1 +8066,1 @@
 -if test "$tools" = true || test "$cross_compiling" = "yes"; then
 +if test "$tools" = true || test "$cross_compiling" = "yes" || test "$host_os" = "emscripten"; then
-@@ -9651 +9651,0 @@ $as_unset _CXX_CXXSUFFIX
+@@ -9651,1 +9651,0 @@
 -
 diff --git a/icu4c/source/config/mh-wasi b/icu4c/source/config/mh-wasi
 new file mode 100644
