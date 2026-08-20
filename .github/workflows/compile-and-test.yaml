@@ -15,6 +15,8 @@ jobs:
     env:
       WORKDIR: ${{ github.workspace }}/workdir
       CCACHE_DIR: ${{ github.workspace }}/workdir/.ccache
+      CCACHE_MAXSIZE: 20G
+      CCACHE_COMPRESS: true
 
     steps:
       - name: Check out repository
@@ -36,9 +38,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: workdir/.ccache
-          key: ccache-${{ runner.os }}-${{ hashFiles('dependencies.toml', 'patches/*.patch', 'build-scripts/*.sh', 'build-scripts/*.cmake') }}
+          key: ccache-${{ runner.os }}-${{ runner.arch }}-llvm-${{ hashFiles('dependencies.toml', 'patches/*@llvm-project.patch', 'build-scripts/build-llvm-project.sh') }}
           restore-keys: |
-            ccache-${{ runner.os }}-
+            ccache-${{ runner.os }}-${{ runner.arch }}-llvm-
 
       - name: Clone pinned sources
         run: python3 download-deps.py dependencies.toml --dir "$WORKDIR"
@@ -48,6 +50,10 @@ jobs:
 
       - name: Build toolchain and libraries
         run: build-scripts/build-all.sh "$WORKDIR"
+
+      - name: Show compiler cache statistics
+        if: always()
+        run: ccache --show-stats
 
       - name: Run stable integration tests
         run: |
